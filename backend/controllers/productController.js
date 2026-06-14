@@ -1,6 +1,6 @@
 const Product = require('../models/Product');
 
-// Fetch products dynamically based on role scoping
+// 1. Fetch products dynamically based on filtering rules
 exports.getAllProducts = async (req, res) => {
   try {
     const { category } = req.query;
@@ -10,7 +10,6 @@ exports.getAllProducts = async (req, res) => {
       query.category = category;
     }
 
-    // FIXED: If an explicit renterId query parameter is provided or if accessed via a renter dashboard session, restrict data scoping
     if (req.query.renterId) {
       query.owner = req.query.renterId;
     }
@@ -22,6 +21,7 @@ exports.getAllProducts = async (req, res) => {
   }
 };
 
+// 2. Fetch specific single item metrics
 exports.getProductById = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id).populate('owner', 'name email');
@@ -32,19 +32,50 @@ exports.getProductById = async (req, res) => {
   }
 };
 
-// Create Product stamped with the creator's ID
+// 3. Create Product stamped with the creator's ID safely
 exports.createProduct = async (req, res) => {
   try {
-    // FIXED: Spread incoming body attributes and inject the authorized session user ID as the owner element
-    const productData = {
-      ...req.body,
-      owner: req.user.id // Binds the item strictly to this specific logged-in Renter ID
-    };
+    let parsedRates = { threeMonth: 0, sixMonth: 0, twelveMonth: 0 };
+    
+    // FIXED: Safely intercept text stringified JSON arrays from FormData streams
+    if (req.body.tenureRates) {
+      try {
+        parsedRates = typeof req.body.tenureRates === 'string' 
+          ? JSON.parse(req.body.tenureRates) 
+          : req.body.tenureRates;
+      } catch (e) {
+        return res.status(400).json({ message: "Invalid JSON format inside tenureRates parameters." });
+      }
+    }
 
-    const product = new Product(productData);
+    // Capture file regardless of whether the frontend calls it 'imageFile' or 'image'
+    let imageArray = [];
+    const uploadedFile = req.file || (req.files && req.files[0]);
+    if (uploadedFile) {
+      // FIXED: Stored relatively to eliminate hardcoded localhost locks
+      imageArray.push(`uploads/${uploadedFile.filename}`);
+    }
+
+    const product = new Product({
+      title: req.body.title,
+      description: req.body.description,
+      category: req.body.category,
+      subCategory: req.body.subCategory,
+      securityDeposit: Number(req.body.securityDeposit) || 0,
+      tenureRates: {
+        threeMonth: Number(parsedRates.threeMonth) || 0,
+        sixMonth: Number(parsedRates.sixMonth) || 0,
+        twelveMonth: Number(parsedRates.twelveMonth) || 0
+      },
+      images: imageArray,
+      availableStock: Number(req.body.availableStock) || Number(req.body.stock) || 1,
+      owner: req.user.id // Stamped with authorized partner user ID context row session
+    });
+
     await product.save();
     res.status(201).json(product);
   } catch (err) {
-    res.status(400).json({ message: err.message });
+    console.error("Product Creation Error Trace:", err);
+    res.status(500).json({ message: err.message });
   }
 };
