@@ -32,30 +32,37 @@ exports.getProductById = async (req, res) => {
   }
 };
 
-// 3. Create Product stamped with the creator's ID safely
+// 3. Create Product with Explicit tenureRates Mapping Structure
 exports.createProduct = async (req, res) => {
   try {
-    let parsedRates = { threeMonth: 0, sixMonth: 0, twelveMonth: 0 };
-    
-    // FIXED: Safely intercept text stringified JSON arrays from FormData streams
+    // Intercept either flat body fields or stringified JSON structures
+    let threeMonthRate = Number(req.body.threeMonth) || 0;
+    let sixMonthRate = Number(req.body.sixMonth) || 0;
+    let twelveMonthRate = Number(req.body.twelveMonth) || 0;
+
     if (req.body.tenureRates) {
       try {
-        parsedRates = typeof req.body.tenureRates === 'string' 
+        const parsed = typeof req.body.tenureRates === 'string' 
           ? JSON.parse(req.body.tenureRates) 
           : req.body.tenureRates;
+        if (parsed) {
+          threeMonthRate = Number(parsed.threeMonth) || threeMonthRate;
+          sixMonthRate = Number(parsed.sixMonth) || sixMonthRate;
+          twelveMonthRate = Number(parsed.twelveMonth) || twelveMonthRate;
+        }
       } catch (e) {
-        return res.status(400).json({ message: "Invalid JSON format inside tenureRates parameters." });
+        console.error("Context parsing warning:", e);
       }
     }
 
-    // Capture file regardless of whether the frontend calls it 'imageFile' or 'image'
+    // Safely parse uploaded binary media fields
     let imageArray = [];
     const uploadedFile = req.file || (req.files && req.files[0]);
     if (uploadedFile) {
-      // FIXED: Stored relatively to eliminate hardcoded localhost locks
       imageArray.push(`uploads/${uploadedFile.filename}`);
     }
 
+    // Build schema definition layout matching product models explicitly
     const product = new Product({
       title: req.body.title,
       description: req.body.description,
@@ -63,19 +70,73 @@ exports.createProduct = async (req, res) => {
       subCategory: req.body.subCategory,
       securityDeposit: Number(req.body.securityDeposit) || 0,
       tenureRates: {
-        threeMonth: Number(parsedRates.threeMonth) || 0,
-        sixMonth: Number(parsedRates.sixMonth) || 0,
-        twelveMonth: Number(parsedRates.twelveMonth) || 0
+        threeMonth: threeMonthRate,
+        sixMonth: sixMonthRate,
+        twelveMonth: twelveMonthRate
       },
       images: imageArray,
       availableStock: Number(req.body.availableStock) || Number(req.body.stock) || 1,
-      owner: req.user.id // Stamped with authorized partner user ID context row session
+      owner: req.user.id
     });
 
     await product.save();
     res.status(201).json(product);
   } catch (err) {
-    console.error("Product Creation Error Trace:", err);
+    console.error("Critical Product Creation Failure:", err);
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// 4. Update Product Details Safely
+exports.updateProduct = async (req, res) => {
+  try {
+    const targetProduct = await Product.findById(req.params.id);
+    if (!targetProduct) return res.status(404).json({ message: 'Product item not found.' });
+
+    let threeMonthRate = Number(req.body.threeMonth) || targetProduct.tenureRates?.threeMonth || 0;
+    let sixMonthRate = Number(req.body.sixMonth) || targetProduct.tenureRates?.sixMonth || 0;
+    let twelveMonthRate = Number(req.body.twelveMonth) || targetProduct.tenureRates?.twelveMonth || 0;
+
+    if (req.body.tenureRates) {
+      try {
+        const parsed = typeof req.body.tenureRates === 'string' ? JSON.parse(req.body.tenureRates) : req.body.tenureRates;
+        if (parsed) {
+          threeMonthRate = Number(parsed.threeMonth) || threeMonthRate;
+          sixMonthRate = Number(parsed.sixMonth) || sixMonthRate;
+          twelveMonthRate = Number(parsed.twelveMonth) || twelveMonthRate;
+        }
+      } catch (e) {
+        console.error("Context parsing warning:", e);
+      }
+    }
+
+    let updatedImagesArray = targetProduct.images;
+    const activeFile = req.file || (req.files && req.files[0]);
+    if (activeFile) {
+      updatedImagesArray = [`uploads/${activeFile.filename}`];
+    }
+
+    const updatedProduct = await Product.findByIdAndUpdate(
+      req.params.id,
+      {
+        title: req.body.title,
+        description: req.body.description,
+        category: req.body.category,
+        subCategory: req.body.subCategory,
+        securityDeposit: Number(req.body.securityDeposit) || 0,
+        tenureRates: {
+          threeMonth: threeMonthRate,
+          sixMonth: sixMonthRate,
+          twelveMonth: twelveMonthRate
+        },
+        images: updatedImagesArray,
+        availableStock: Number(req.body.availableStock) || Number(req.body.stock) || 1
+      },
+      { new: true }
+    );
+
+    res.json(updatedProduct);
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
