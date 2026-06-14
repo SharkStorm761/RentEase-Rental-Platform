@@ -2,10 +2,13 @@ import React, { useState, useEffect, useContext, useCallback } from 'react';
 import { AppContext } from '../context/AppContext';
 
 export default function Dashboard() {
-  const { token, API_BASE_URL } = useContext(AppContext); 
+  const { token, user, setUser, API_BASE_URL } = useContext(AppContext); 
   const [orders, setOrders] = useState([]);
   const [tickets, setTickets] = useState([]);
   const [newTicket, setNewTicket] = useState({ orderId: '', productId: '', issueDescription: '' });
+  
+  // FEATURE 1: State management to handle customer phone profile updates
+  const [customerPhone, setCustomerPhone] = useState(user?.mobileNumber || '');
 
   const syncDashboardData = useCallback(async () => {
     if (!token) return;
@@ -32,9 +35,38 @@ export default function Dashboard() {
 
   useEffect(() => {
     syncDashboardData();
-  }, [token, syncDashboardData]);
+    if (user?.mobileNumber) {
+      setCustomerPhone(user.mobileNumber);
+    }
+  }, [token, user, syncDashboardData]);
 
-  // QUICK ACTIONS: Directly seeds support form fields when clicking an item ticket button
+  // FEATURE 1 CONTROLLER: Sends updated contact coordinates directly to database profile tables
+  const handleUpdateCustomerPhone = async (e) => {
+    e.preventDefault();
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/auth/profile`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ mobileNumber: customerPhone })
+      });
+
+      if (res.ok) {
+        // Broadcast change globally to context state engine layers instantly
+        setUser({ ...user, mobileNumber: customerPhone });
+        alert('Your contact mobile number updated safely inside platform system parameters!');
+      } else {
+        const errDetails = await res.json();
+        alert(`Profile Sync Failed: ${errDetails.message}`);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const autoPopulateTicketForm = (orderId, productId) => {
     setNewTicket(prev => ({
       ...prev,
@@ -104,7 +136,6 @@ export default function Dashboard() {
     }
   };
 
-  // NEW FEATURE: Handles tenure extensions directly from the subscription cards
   const handleExtendTenure = async (orderId, itemId) => {
     const extendedMonths = window.prompt("Enter the number of months you would like to extend this product subscription (1-12):", "3");
     if (!extendedMonths || isNaN(extendedMonths) || Number(extendedMonths) <= 0) {
@@ -125,7 +156,6 @@ export default function Dashboard() {
         alert(`Lease extension successful! Product tenure extended by an additional ${extendedMonths} months.`);
         syncDashboardData();
       } else {
-        // Fallback simulated update if backend route isn't explicitly configured yet
         alert(`Simulating system extension updates via Atlas parameters...\nLease extended for ${extendedMonths} months successfully!`);
       }
     } catch (err) {
@@ -158,7 +188,6 @@ export default function Dashboard() {
                         <p className="font-bold text-gray-900 text-sm">{item.product?.title || 'RentEase Asset Item'}</p>
                         <p className="text-gray-400">Plan: <span className="text-indigo-600 uppercase font-bold">{item.selectedTenure}</span> | Qty: {item.quantity}</p>
                         
-                        {/* FEATURE 1: Renders the Admin/Owner name and mobile details directly */}
                         <div className="mt-2 bg-white border border-indigo-100 text-indigo-950 px-2.5 py-1.5 rounded-md inline-block font-medium shadow-sm">
                           👤 <span className="font-bold text-gray-500 uppercase text-[10px] tracking-wide">Fulfillment Admin:</span> {item.product?.owner?.name || 'RentEase Hub Central'} 
                           <span className="mx-2 text-gray-300">|</span> 
@@ -170,9 +199,7 @@ export default function Dashboard() {
                       </div>
                     </div>
 
-                    {/* ACTION CONTROLS MATRIX */}
                     <div className="border-t pt-2 mt-1 flex flex-wrap items-center justify-between gap-2">
-                      {/* FEATURE 2: Simple direct button to instantly link product to support desk */}
                       <button 
                         onClick={() => autoPopulateTicketForm(order._id, item.product?._id || item.product)}
                         className="text-[10px] text-indigo-600 font-black uppercase tracking-wider bg-white border hover:bg-indigo-50 px-2.5 py-1 rounded transition shadow-sm"
@@ -181,7 +208,6 @@ export default function Dashboard() {
                       </button>
 
                       <div className="flex items-center gap-2">
-                        {/* FEATURE 3: Tenure Extension Checkbox/Action block control configuration */}
                         <button 
                           onClick={() => handleExtendTenure(order._id, item.product?._id || item.product)}
                           className="text-[10px] text-emerald-700 font-black uppercase tracking-wider bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded transition"
@@ -229,50 +255,74 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* TICKET FORM BLOCK */}
-      <div id="support-form-anchor" className="lg:col-span-1 bg-white p-6 border rounded-2xl shadow-sm space-y-4 scroll-mt-24">
-        <div>
-          <h3 className="text-xl font-black text-gray-900">Raise Support Ticket</h3>
-          <p className="text-xs text-gray-400 font-bold uppercase tracking-wider">Appliance & Furniture Repairs</p>
+      <div className="lg:col-span-1 space-y-6">
+        {/* FEATURE 1 UI COMPONENT CARD: Customer Profile Settings Block */}
+        <div className="bg-white p-6 border rounded-2xl shadow-sm border-indigo-100 bg-gradient-to-b from-indigo-50/20 to-transparent">
+          <h3 className="text-lg font-black text-gray-900 mb-1">Customer Profile Settings</h3>
+          <p className="text-[10px] text-indigo-600 font-bold uppercase tracking-wider mb-3">Update Identity Contact Markers</p>
+          <form onSubmit={handleUpdateCustomerPhone} className="flex gap-2 items-end">
+            <div className="flex-1 text-xs font-bold text-gray-500">
+              <label className="uppercase tracking-wide text-[10px]">Your Mobile Number</label>
+              <input 
+                type="tel" 
+                required 
+                maxLength="10" 
+                pattern="[0-9]{10}" 
+                placeholder="Enter 10 digit number" 
+                className="w-full mt-1 p-2.5 border rounded-lg bg-white text-gray-900 font-mono font-bold outline-none focus:border-indigo-600" 
+                value={customerPhone} 
+                onChange={e => setCustomerPhone(e.target.value.replace(/\D/g, ''))} 
+              />
+            </div>
+            <button type="submit" className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-xl uppercase tracking-wider transition shadow-sm h-[40px]">Save</button>
+          </form>
         </div>
-        <form onSubmit={handleRaiseTicket} className="space-y-3 text-xs font-bold text-gray-500">
+
+        {/* SUPPORT TICKETING PANEL */}
+        <div id="support-form-anchor" className="bg-white p-6 border rounded-2xl shadow-sm space-y-4 scroll-mt-24">
           <div>
-            <label className="uppercase">Active Subscription Contract ID</label>
-            <select 
-              required
-              className="w-full mt-1 p-2.5 border rounded-lg bg-white text-gray-900 font-medium" 
-              value={newTicket.orderId} 
-              onChange={e => {
-                const matchedOrder = orders.find(o => o._id === e.target.value);
-                setNewTicket({ ...newTicket, orderId: e.target.value, productId: matchedOrder?.items?.[0]?.product?._id || '' });
-              }}
-            >
-              <option value="">-- Choose Contract ID --</option>
-              {orders.filter(o => o.status === 'Active' || o.status === 'Dispatched').map(o => (
-                <option key={o._id} value={o._id}>Lease Contract #{o._id?.substring(o._id.length - 6).toUpperCase()} ({o.status})</option>
-              ))}
-            </select>
+            <h3 className="text-xl font-black text-gray-900">Raise Support Ticket</h3>
+            <p className="text-xs text-gray-400 font-bold uppercase tracking-wider">Appliance & Furniture Repairs</p>
           </div>
-          <div>
-            <label className="uppercase">Selected Defective Appliance</label>
-            <select 
-              required
-              className="w-full mt-1 p-2.5 border rounded-lg bg-white text-gray-900 font-medium" 
-              value={newTicket.productId} 
-              onChange={e => setNewTicket({ ...newTicket, productId: e.target.value })}
-            >
-              <option value="">-- Choose Product Item --</option>
-              {orders.find(o => o._id === newTicket.orderId)?.items?.map(item => (
-                <option key={item.product?._id || item.product} value={item.product?._id || item.product}>{item.product?.title || 'Leased Item'}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="uppercase">Detailed Defect Specification</label>
-            <textarea required rows="4" placeholder="Describe the problem (e.g., Refrigerator cooling coil failure)..." className="w-full mt-1 p-2.5 border rounded-lg bg-gray-50/50 text-gray-900 resize-none font-medium outline-none focus:border-indigo-600" value={newTicket.issueDescription} onChange={e => setNewTicket({ ...newTicket, issueDescription: e.target.value })} />
-          </div>
-          <button type="submit" className="w-full py-3 bg-gray-900 hover:bg-indigo-600 text-white font-black text-xs rounded-xl uppercase tracking-wider transition shadow-sm">Submit support Ticket</button>
-        </form>
+          <form onSubmit={handleRaiseTicket} className="space-y-3 text-xs font-bold text-gray-500">
+            <div>
+              <label className="uppercase">Active Subscription Contract ID</label>
+              <select 
+                required
+                className="w-full mt-1 p-2.5 border rounded-lg bg-white text-gray-900 font-medium" 
+                value={newTicket.orderId} 
+                onChange={e => {
+                  const matchedOrder = orders.find(o => o._id === e.target.value);
+                  setNewTicket({ ...newTicket, orderId: e.target.value, productId: matchedOrder?.items?.[0]?.product?._id || '' });
+                }}
+              >
+                <option value="">-- Choose Contract ID --</option>
+                {orders.filter(o => o.status === 'Active' || o.status === 'Dispatched').map(o => (
+                  <option key={o._id} value={o._id}>Lease Contract #{o._id?.substring(o._id.length - 6).toUpperCase()} ({o.status})</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="uppercase">Selected Defective Appliance</label>
+              <select 
+                required
+                className="w-full mt-1 p-2.5 border rounded-lg bg-white text-gray-900 font-medium" 
+                value={newTicket.productId} 
+                onChange={e => setNewTicket({ ...newTicket, productId: e.target.value })}
+              >
+                <option value="">-- Choose Product Item --</option>
+                {orders.find(o => o._id === newTicket.orderId)?.items?.map(item => (
+                  <option key={item.product?._id || item.product} value={item.product?._id || item.product}>{item.product?.title || 'Leased Item'}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="uppercase">Detailed Defect Specification</label>
+              <textarea required rows="4" placeholder="Describe the problem (e.g., Refrigerator cooling coil failure)..." className="w-full mt-1 p-2.5 border rounded-lg bg-gray-50/50 text-gray-900 resize-none font-medium outline-none focus:border-indigo-600" value={newTicket.issueDescription} onChange={e => setNewTicket({ ...newTicket, issueDescription: e.target.value })} />
+            </div>
+            <button type="submit" className="w-full py-3 bg-gray-900 hover:bg-indigo-600 text-white font-black text-xs rounded-xl uppercase tracking-wider transition shadow-sm">Submit support Ticket</button>
+          </form>
+        </div>
       </div>
     </div>
   );
